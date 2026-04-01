@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VaultSidecar</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <span class="logo-icon">🔐</span>
+        <span class="logo-text">VaultSidecar</span>
+      </div>
+      <div id="auth-status" class="auth-badge auth-badge--loading">...</div>
+    </div>
+
+    <!-- Not logged in -->
+    <div id="view-login" class="view hidden">
+      <p class="hint">Sign in to let Auth0 manage your agent tokens securely.</p>
+      <button id="btn-login" class="btn btn--primary btn--full">Sign in with Auth0</button>
+    </div>
+
+    <!-- Main view -->
+    <div id="view-main" class="view hidden">
+
+      <!-- Page context pill -->
+      <div id="context-pill" class="context-pill">
+        <span id="context-icon">🌐</span>
+        <span id="context-label">Detecting page…</span>
+      </div>
+
+      <!-- Suggested actions -->
+      <div id="suggestions" class="suggestions"></div>
+
+      <!-- Chat -->
+      <div id="chat-log" class="chat-log"></div>
+
+      <!-- Input -->
+      <div class="input-row">
+        <input id="user-input" type="text" placeholder="Ask the agent to do something…" autocomplete="off" />
+        <button id="btn-send" class="btn btn--primary">▶</button>
+      </div>
+
+      <!-- Token info -->
+      <div id="token-bar" class="token-bar">
+        <span class="token-bar__label">Active tokens:</span>
+        <span id="token-chips" class="token-chips"></span>
+        <button id="btn-tokens" class="btn btn--ghost btn--xs">Manage</button>
+      </div>
+    </div>
+
+    <!-- CIBA approval view -->
+    <div id="view-ciba" class="view hidden">
+      <div class="ciba-card">
+        <div class="ciba-icon">⚠️</div>
+        <h3 class="ciba-title">Action requires your approval</h3>
+        <p id="ciba-description" class="ciba-desc"></p>
+        <div class="ciba-actions">
+          <button id="btn-ciba-approve" class="btn btn--primary">Approve</button>
+          <button id="btn-ciba-deny" class="btn btn--danger">Deny</button>
+        </div>
+        <p class="ciba-hint">Check your phone or email for the Auth0 push notification.</p>
+      </div>
+    </div>
+
+    <!-- Token manager view -->
+    <div id="view-tokens" class="view hidden">
+      <div class="view-header">
+        <button id="btn-back" class="btn btn--ghost btn--xs">← Back</button>
+        <h3>Connected Tokens</h3>
+      </div>
+      <div id="token-list" class="token-list"></div>
+    </div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

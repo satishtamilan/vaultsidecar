@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "VaultSidecar – Auth0 Agent",
+  "version": "1.0.0",
+  "description": "AI agent sidecar powered by Auth0 Token Vault. Acts on any page on your behalf.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "identity",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://mail.google.com/*",
+    "https://www.amazon.co.uk/*",
+    "https://www.amazon.com/*",
+    "http://localhost:3000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "vaultsidecar@auth0-hackathon",
+      "strict_min_version": "113.0"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*",
+        "https://mail.google.com/*",
+        "https://www.amazon.co.uk/*",
+        "https://www.amazon.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
