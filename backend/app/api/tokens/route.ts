@@ -11,21 +11,20 @@ export async function GET() {
 
   const checks: Array<{ key: Connection; connection: string }> = [
     { key: "github", connection: CONNECTIONS.github },
-    { key: "google", connection: CONNECTIONS.google },
+    { key: "slack", connection: CONNECTIONS.slack },
   ];
 
   const results = await Promise.all(
     checks.map(async ({ key, connection }) => {
       try {
         const { token } = await auth0.getAccessTokenForConnection({ connection });
-        return { connection: key, active: !!token, expired: !token };
+        return { connection: key, connectionId: connection, active: !!token, expired: !token };
       } catch {
-        // Fallback: check if user has an IDP identity token
         try {
           const idpToken = await getIdpTokenForConnection(key);
-          if (idpToken) return { connection: key, active: true, expired: false };
+          if (idpToken) return { connection: key, connectionId: connection, active: true, expired: false };
         } catch {}
-        return { connection: key, active: false, expired: false };
+        return { connection: key, connectionId: connection, active: false, expired: false };
       }
     })
   );

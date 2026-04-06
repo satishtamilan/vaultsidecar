@@ -74,7 +74,9 @@ export async function GET(req: NextRequest) {
       state,
       scopes: connection === "github"
         ? ["repo", "read:user", "user:email"]
-        : ["openid", "profile", "email", "https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"],
+        : connection === "slack"
+        ? ["channels:read", "chat:write", "users:read", "im:history", "channels:history"]
+        : ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"],
     }),
   });
 

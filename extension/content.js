@@ -6,6 +6,7 @@ function detectSite() {
   if (host.includes("github.com")) return "github";
   if (host.includes("mail.google.com")) return "gmail";
   if (host.includes("amazon.")) return "amazon";
+  if (host.includes("slack.com")) return "slack";
   return "unknown";
 }
 
@@ -74,10 +75,21 @@ function getAmazonContext() {
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 const site = detectSite();
 
+function getSlackContext() {
+  const channelName = document.querySelector("[data-qa='channel_name']")?.textContent?.trim() ?? "";
+  return {
+    url: location.href,
+    title: channelName || document.title,
+    type: channelName ? "channel" : "home",
+    channelName,
+  };
+}
+
 const extractors = {
   github: getGitHubContext,
   gmail: getGmailContext,
   amazon: getAmazonContext,
+  slack: getSlackContext,
 };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

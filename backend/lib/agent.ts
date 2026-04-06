@@ -7,11 +7,11 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { auth0 } from "./auth0";
 import { githubTools, WRITE_TOOLS as GITHUB_WRITE } from "./tools/github";
-import { gmailTools, WRITE_TOOLS as GMAIL_WRITE } from "./tools/gmail";
+import { slackTools, WRITE_TOOLS as SLACK_WRITE } from "./tools/slack";
 import { amazonTools } from "./tools/amazon";
 
 // All write tools that require CIBA approval
-const ALL_WRITE_TOOLS = new Set([...GITHUB_WRITE, ...GMAIL_WRITE]);
+const ALL_WRITE_TOOLS = new Set([...GITHUB_WRITE, ...SLACK_WRITE]);
 
 // ─── Model ────────────────────────────────────────────────────────────────────
 const isLocal = process.env.LLM_PROVIDER === "local";
@@ -39,9 +39,9 @@ function buildAgent(tools: any[]) {
 
 const agents = {
   github: buildAgent(githubTools),
-  gmail: buildAgent(gmailTools),
+  slack: buildAgent(slackTools),
   amazon: buildAgent(amazonTools),
-  unknown: buildAgent([...githubTools, ...gmailTools]),
+  unknown: buildAgent([...githubTools, ...slackTools]),
 };
 
 // ─── System prompts ───────────────────────────────────────────────────────────
@@ -49,8 +49,8 @@ function getSystemPrompt(context: PageContext): string {
   const base = `You are VaultSidecar, a concise AI agent embedded in a browser extension.
 You help users take actions on the current web page using their connected accounts.
 Auth0 Token Vault manages all credentials — you never see raw tokens or passwords.
-Keep responses short (2-4 sentences max). Be direct and action-oriented.
-If you cannot complete a task, explain why briefly.`;
+IMPORTANT: When a tool returns data (repos, channels, messages, etc.), you MUST include the full results in your response. Never say "listed above" — the user can only see YOUR final text response.
+Be direct and action-oriented.`;
 
   const contextStr = JSON.stringify(context, null, 2);
 
@@ -105,11 +105,11 @@ async function checkWriteToolsInterceptor(
     };
   }
 
-  if (context.site === "gmail" && (message.toLowerCase().includes("send") || message.toLowerCase().includes("reply"))) {
+  if (context.site === "slack" && (message.toLowerCase().includes("send") || message.toLowerCase().includes("post") || message.toLowerCase().includes("message"))) {
     return {
       needsApproval: true,
-      toolName: "send_email_reply",
-      approvalMessage: `The agent wants to send an email reply to "${context.subject ?? "this thread"}". Approve this action?`,
+      toolName: "send_slack_message",
+      approvalMessage: `The agent wants to send a message in Slack. Approve this action?`,
     };
   }
 
@@ -138,8 +138,14 @@ export async function runAgent(
     };
   }
 
-  // 2. Pick the right agent for this page
-  const site = context.site as keyof typeof agents;
+  // 2. Pick the right agent — keyword hints override page context
+  let site = context.site as keyof typeof agents;
+  const lower = message.toLowerCase();
+  if (lower.includes("slack") || lower.includes("channel")) {
+    site = "slack" as any;
+  } else if (lower.includes("github") || lower.includes("repo") || lower.includes("pull request")) {
+    site = "github" as any;
+  }
   const agent = agents[site] ?? agents.unknown;
 
   // 3. Get refresh token from session to pass to Token Vault wrappers

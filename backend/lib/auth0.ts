@@ -26,6 +26,7 @@ export const auth0AI = new Auth0AI({
 export const CONNECTIONS = {
   github: process.env.AUTH0_GITHUB_CONNECTION ?? "github",
   google: process.env.AUTH0_GOOGLE_CONNECTION ?? "google-oauth2",
+  slack: process.env.AUTH0_SLACK_CONNECTION ?? "slack",
 } as const;
 
 export type Connection = keyof typeof CONNECTIONS;
@@ -59,6 +60,12 @@ export const withGmailRead = auth0AI.withTokenVault({
 export const withGmailSend = auth0AI.withTokenVault({
   connection: CONNECTIONS.google,
   scopes: ["https://www.googleapis.com/auth/gmail.send"],
+  refreshToken: resolveRefreshToken,
+});
+
+export const withSlack = auth0AI.withTokenVault({
+  connection: CONNECTIONS.slack,
+  scopes: [],
   refreshToken: resolveRefreshToken,
 });
 
@@ -122,17 +129,36 @@ export async function getIdpTokenForConnection(
     if (!mgmtRes.ok) return null;
     const { access_token: mgmtToken } = await mgmtRes.json();
 
+    const connName = CONNECTIONS[connection];
+
+    // First check the current user's linked identities
     const userRes = await fetch(
       `https://${domain}/api/v2/users/${encodeURIComponent(session.user.sub)}?fields=identities&include_fields=true`,
       { headers: { Authorization: `Bearer ${mgmtToken}` } }
     );
-    if (!userRes.ok) return null;
-    const { identities } = await userRes.json();
+    if (userRes.ok) {
+      const { identities } = await userRes.json();
+      const identity = identities?.find((id: any) => id.connection === connName);
+      if (identity?.access_token) return identity.access_token;
+    }
 
-    const identity = identities?.find(
-      (id: any) => id.connection === CONNECTIONS[connection]
+    // If not found, search for a user with this connection (e.g. separate Slack login)
+    const searchRes = await fetch(
+      `https://${domain}/api/v2/users?q=${encodeURIComponent(`identities.connection:"${connName}"`)}&search_engine=v3&fields=identities&include_fields=true`,
+      { headers: { Authorization: `Bearer ${mgmtToken}` } }
     );
-    return identity?.access_token ?? null;
+    if (searchRes.ok) {
+      const users = await searchRes.json();
+      for (const u of users) {
+        const identity = u.identities?.find((id: any) => id.connection === connName);
+        if (identity?.access_token) {
+          console.log(`[IDP fallback] Found ${connection} token on user ${u.user_id ?? "unknown"}`);
+          return identity.access_token;
+        }
+      }
+    }
+
+    return null;
   } catch (err) {
     console.error(`[IDP fallback] Failed for ${connection}:`, err);
     return null;

@@ -271,7 +271,7 @@ $("btn-tokens").addEventListener("click", async () => {
         ? `<span class="token-item__reason">${t.reason}</span>`
         : "";
       const connectBtn = !t.connected
-        ? `<button class="btn btn--xs btn--connect" data-connection="${t.connection}">Connect</button>`
+        ? `<button class="btn btn--xs btn--connect" data-connection="${t.connectionId || t.connection}">Connect</button>`
         : "";
       list.innerHTML += `
         <div class="token-item">

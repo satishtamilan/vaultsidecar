@@ -7,15 +7,12 @@ import type { Connection } from "@/lib/auth0";
 
 const CHECKS: Array<{ key: Connection; connection: string }> = [
   { key: "github", connection: CONNECTIONS.github },
-  { key: "google", connection: CONNECTIONS.google },
+  { key: "slack", connection: CONNECTIONS.slack },
 ];
 
 const SCOPE_MAP: Record<string, string[]> = {
   github: ["repo", "read:user", "user:email"],
-  google: [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-  ],
+  slack: ["channels:read", "chat:write", "users:read", "channels:history"],
 };
 
 export async function GET() {
@@ -32,6 +29,7 @@ export async function GET() {
 
         return {
           connection: key,
+          connectionId: connection,
           connected: !!token,
           active: !!token,
           expired: false,
@@ -49,6 +47,7 @@ export async function GET() {
         if (idpToken) {
           return {
             connection: key,
+            connectionId: connection,
             connected: true,
             active: true,
             expired: false,
@@ -67,6 +66,7 @@ export async function GET() {
 
       return {
         connection: key,
+        connectionId: connection,
         connected: false,
         active: false,
         expired: false,
