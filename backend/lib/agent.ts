@@ -49,8 +49,13 @@ function getSystemPrompt(context: PageContext): string {
   const base = `You are VaultSidecar, a concise AI agent embedded in a browser extension.
 You help users take actions on the current web page using their connected accounts.
 Auth0 Token Vault manages all credentials — you never see raw tokens or passwords.
-IMPORTANT: When a tool returns data (repos, channels, messages, etc.), you MUST include the full results in your response. Never say "listed above" — the user can only see YOUR final text response.
-Be direct and action-oriented.`;
+
+CRITICAL RULES:
+1. ALWAYS call tools directly using function calling. NEVER output JSON tool calls as text.
+2. Do NOT ask the user for parameters you can omit. For example, recent_commits works WITHOUT a repo — it returns commits across all repos.
+3. When a tool returns data, you MUST include the full results in your response. Never say "listed above".
+4. NEVER ask for tokens, passwords, or usernames — all auth is handled automatically.
+5. Be direct: call the tool first, then respond with results.`;
 
   const contextStr = JSON.stringify(context, null, 2);
 
@@ -116,6 +121,31 @@ async function checkWriteToolsInterceptor(
   return { needsApproval: false };
 }
 
+// ─── Tool registry for direct execution fallback ─────────────────────────────
+const allTools = [...githubTools, ...slackTools, ...amazonTools];
+const toolByName = new Map(allTools.map((t) => [t.name, t]));
+
+function extractTextToolCall(text: string): { name: string; args: Record<string, any> } | null {
+  const patterns = [
+    /\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"parameters"\s*:\s*(\{[^}]*\})\s*\}/,
+    /\{\s*"name"\s*:\s*"([^"]+)"\s*\}/,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      const name = m[1];
+      let args: Record<string, any> = {};
+      if (m[2]) {
+        try {
+          args = JSON.parse(m[2]);
+        } catch { /* ignore parse errors */ }
+      }
+      if (toolByName.has(name)) return { name, args };
+    }
+  }
+  return null;
+}
+
 // ─── Run agent ────────────────────────────────────────────────────────────────
 export async function runAgent(
   message: string,
@@ -143,7 +173,7 @@ export async function runAgent(
   const lower = message.toLowerCase();
   if (lower.includes("slack") || lower.includes("channel")) {
     site = "slack" as any;
-  } else if (lower.includes("github") || lower.includes("repo") || lower.includes("pull request")) {
+  } else if (lower.includes("github") || lower.includes("repo") || lower.includes("pull request") || lower.includes("commit") || lower.includes("git")) {
     site = "github" as any;
   }
   const agent = agents[site] ?? agents.unknown;
@@ -180,9 +210,26 @@ export async function runAgent(
     }
 
     const lastMsg = result.messages[result.messages.length - 1];
-    const response = typeof lastMsg.content === "string"
+    let response = typeof lastMsg.content === "string"
       ? lastMsg.content
       : JSON.stringify(lastMsg.content);
+
+    // 5. Fallback: if local model output tool call as text instead of invoking it, execute directly
+    const textCall = extractTextToolCall(response);
+    if (textCall) {
+      console.log(`[agent] Local model emitted tool call as text — executing directly: ${textCall.name}(${JSON.stringify(textCall.args)})`);
+      const targetTool = toolByName.get(textCall.name)!;
+      try {
+        const toolResult = await targetTool.invoke(textCall.args);
+        const toolOutput = typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult);
+        if (toolOutput && toolOutput.length > 0) {
+          response = toolOutput;
+        }
+      } catch (toolErr: any) {
+        console.error(`[agent] Direct tool execution failed:`, toolErr?.message);
+        response = `Error executing ${textCall.name}: ${toolErr?.message}`;
+      }
+    }
 
     return { response };
   } catch (err: any) {

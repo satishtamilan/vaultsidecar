@@ -10,6 +10,28 @@ const CHECKS: Array<{ key: Connection; connection: string }> = [
   { key: "slack", connection: CONNECTIONS.slack },
 ];
 
+const VERIFY_URLS: Record<string, string> = {
+  github: "https://api.github.com/user",
+  slack: "https://slack.com/api/auth.test",
+};
+
+async function verifyToken(connection: string, token: string): Promise<boolean> {
+  const url = VERIFY_URLS[connection];
+  if (!url) return true;
+  try {
+    const r = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (connection === "slack") {
+      const data = await r.json();
+      return data.ok === true;
+    }
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 const SCOPE_MAP: Record<string, string[]> = {
   github: ["repo", "read:user", "user:email"],
   slack: ["channels:read", "chat:write", "users:read", "channels:history"],
@@ -41,19 +63,22 @@ export async function GET() {
         console.error(`[tokens/detail] Token Vault failed for ${key}:`, err?.message);
       }
 
-      // Fallback: try IDP identity token from the user's Auth0 profile
+      // Fallback: try IDP identity token and verify it's still valid
       try {
         const idpToken = await getIdpTokenForConnection(key);
         if (idpToken) {
+          const valid = await verifyToken(key, idpToken);
           return {
             connection: key,
             connectionId: connection,
             connected: true,
-            active: true,
-            expired: false,
+            active: valid,
+            expired: !valid,
             scopes: SCOPE_MAP[key] ?? [],
             expiresAt: null,
-            reason: "Using login identity token (Connected Accounts not set up)",
+            reason: valid
+              ? "Using login identity token (Connected Accounts not set up)"
+              : "Token expired — please log out and log in again with this provider",
           };
         }
       } catch (fallbackErr: any) {

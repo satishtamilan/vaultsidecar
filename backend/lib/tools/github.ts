@@ -5,7 +5,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { getAccessTokenFromTokenVault } from "@auth0/ai-langchain";
-import { withGitHub, getIdpTokenForConnection } from "../auth0";
+import { getIdpTokenForConnection } from "../auth0";
 
 const GITHUB_API = "https://api.github.com";
 
@@ -128,7 +128,7 @@ const listReposBase = tool(
     console.log("[list_repos] Tool invoked");
     const token = await resolveGitHubToken();
     try {
-      const repos = await ghFetch("/user/repos?sort=updated&per_page=10", token);
+      const repos = await ghFetch("/user/repos?sort=pushed&per_page=10", token);
       const result = repos
         .map((r: any) => `${r.full_name} — ${r.description ?? "no description"} ⭐${r.stargazers_count}`)
         .join("\n");
@@ -141,16 +141,80 @@ const listReposBase = tool(
   },
   {
     name: "list_repos",
-    description: "List the authenticated user's GitHub repositories",
+    description: "List the authenticated user's GitHub repositories, sorted by most recently pushed",
     schema: z.object({}),
   }
 );
 
-export const listPRsTool = withGitHub(listPRsBase);
-export const commentOnPRTool = withGitHub(commentOnPRBase);
-export const getPRDetailsTool = withGitHub(getPRDetailsBase);
-export const listReposTool = withGitHub(listReposBase);
+// ─── Recent commits ──────────────────────────────────────────────────────────
+const recentCommitsBase = tool(
+  async ({ repo, count }) => {
+    const n = count ?? 5;
+    console.log(`[recent_commits] Tool invoked — repo=${repo || "(all)"} count=${n}`);
+    const token = await resolveGitHubToken();
+    try {
+      if (repo && repo.includes("/")) {
+        const commits = await ghFetch(`/repos/${repo}/commits?per_page=${n}`, token);
+        return formatCommits(commits, repo);
+      }
 
-export const githubTools = [listReposTool, listPRsTool, getPRDetailsTool, commentOnPRTool];
+      const repos = await ghFetch("/user/repos?sort=pushed&per_page=5&affiliation=owner,collaborator", token);
+      if (!repos.length) return "No repositories found.";
+
+      const lines: string[] = [];
+      for (const r of repos) {
+        try {
+          const commits = await ghFetch(`/repos/${r.full_name}/commits?per_page=${n}`, token);
+          if (commits.length) {
+            lines.push(...formatCommits(commits.slice(0, Math.max(1, Math.ceil(n / repos.length))), r.full_name).split("\n"));
+          }
+        } catch (repoErr: any) {
+          console.log(`[recent_commits] Skipping ${r.full_name}: ${repoErr.message}`);
+        }
+        if (lines.length >= n) break;
+      }
+
+      return lines.length ? lines.slice(0, n).join("\n") : "No recent commits found.";
+    } catch (err: any) {
+      console.error("[recent_commits] error:", err.message);
+      throw err;
+    }
+  },
+  {
+    name: "recent_commits",
+    description:
+      "Get recent git commits. If repo is provided (owner/name), lists commits for that repo. Otherwise fetches the latest commits from the user's most recently pushed repositories.",
+    schema: z.object({
+      repo: z
+        .string()
+        .optional()
+        .describe("Repository in owner/name format, e.g. 'octocat/hello-world'. Omit to get commits across recent repos."),
+      count: z
+        .number()
+        .optional()
+        .describe("Number of commits to return (default 5)"),
+    }),
+  }
+);
+
+function formatCommits(commits: any[], repoName: string): string {
+  return commits
+    .map((c: any) => {
+      const sha = c.sha.slice(0, 7);
+      const msg = c.commit.message.split("\n")[0];
+      const author = c.commit.author?.name ?? "unknown";
+      const date = c.commit.author?.date ?? "";
+      return `${sha} — ${msg} (by ${author}, ${date}) [${repoName}]`;
+    })
+    .join("\n");
+}
+
+export const listPRsTool = listPRsBase;
+export const commentOnPRTool = commentOnPRBase;
+export const getPRDetailsTool = getPRDetailsBase;
+export const listReposTool = listReposBase;
+export const recentCommitsTool = recentCommitsBase;
+
+export const githubTools = [listReposTool, recentCommitsTool, listPRsTool, getPRDetailsTool, commentOnPRTool];
 
 export const WRITE_TOOLS = new Set(["comment_on_pr"]);
